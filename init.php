@@ -50,18 +50,28 @@ class Reddit_Delay extends Plugin {
 		$target = $xpath->query("//atom:feed")->item(0);
 
 		while ($row = $sth->fetch()) {
-			Debug::log(sprintf("[delay] pulling from cache: %s [%s]",
-				$row["link"], $row["orig_ts"]), Debug::$LOG_VERBOSE);
+			$reddit_json = UrlHelper::fetch(["url" => $row["link"] . "/.json"]);
 
-			$tmpdoc = new DOMDocument();
+			if ($reddit_json) {
+				Debug::log(sprintf("[delay] pulling from cache: %s [%s]",
+					$row["link"], $row["orig_ts"]), Debug::$LOG_VERBOSE);
 
-			if ($tmpdoc->loadXML($row["item"])) {
-				$tmpxpath = new DOMXPath($tmpdoc);
+				$tmpdoc = new DOMDocument();
 
-				$imported_entry = $doc->importNode($tmpxpath->query("//entry")->item(0), true);
+				if ($tmpdoc->loadXML($row["item"])) {
+					$tmpxpath = new DOMXPath($tmpdoc);
+
+					$imported_entry = $doc->importNode($tmpxpath->query("//entry")->item(0), true);
+
+					$dsth->execute([$row["id"]]);
+				}
+			} else {
+				Debug::log(sprintf("[delay] json fetch failed, post deleted? removing: %s [%s]",
+					$row["link"], $row["orig_ts"]), Debug::$LOG_VERBOSE);
 
 				$dsth->execute([$row["id"]]);
 			}
+
 		}
 	}
 
