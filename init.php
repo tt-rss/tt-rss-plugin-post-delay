@@ -7,7 +7,9 @@ class Reddit_Delay extends Plugin {
 	function about() {
 		return array(1.0,
 			"Delay posts in Reddit feeds",
-			"fox");
+			"fox",
+			false,
+			"https://community.tt-rss.org/t/suggestions-for-how-to-delay-a-feed/4425");
 	}
 
 	function init($host) {
