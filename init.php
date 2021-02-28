@@ -39,7 +39,18 @@ class Reddit_Delay extends Plugin {
 		$sth->execute([$feed_id, $item->get_link(), $entry_xml, date("Y-m-d H:i:s", $item->get_date())]);
 	}
 
+	// force-remove all leftover data from cache
+	private function cache_cleanup() {
+		$max_days = (int) Config::get(Config::CACHE_MAX_DAYS);
+
+		$sth = $this->pdo->prepare("DELETE FROM ttrss_plugin_reddit_delay_cache
+			WHERE orig_ts < NOW() - INTERVAL '$max_days days'");
+		$sth->execute([]);
+	}
+
 	private function cache_pull_older(int $feed_id, int $delay, DOMDocument $doc, DOMXPath $xpath) {
+		$skip_removed = $this->host->get($this, "skip_removed");
+
 		$sth = $this->pdo->prepare("SELECT id, link, item, orig_ts
 			FROM ttrss_plugin_reddit_delay_cache
 			WHERE feed_id = ? AND orig_ts < NOW() - INTERVAL '$delay hours'");
@@ -49,30 +60,66 @@ class Reddit_Delay extends Plugin {
 
 		$target = $xpath->query("//atom:feed")->item(0);
 
+		$num_pulled = 0;
+
 		while ($row = $sth->fetch()) {
-			$reddit_json = UrlHelper::fetch(["url" => $row["link"] . "/.json"]);
+			$skip_post = false;
 
-			if ($reddit_json) {
-				Debug::log(sprintf("[delay] pulling from cache: %s [%s]",
-					$row["link"], $row["orig_ts"]), Debug::$LOG_VERBOSE);
+			Debug::log(sprintf("[delay] pulling from cache: %s [%s]",
+				$row["link"], $row["orig_ts"]), Debug::$LOG_EXTENDED);
 
+			if ($skip_removed) {
+				$matches = [];
+
+				if (preg_match("/\/comments\/([^\/]+)\//", $row["link"], $matches)) {
+					$post_id = $matches[1];
+					$post_api_url = "https://api.reddit.com/api/info/?id=t3_${post_id}";
+
+					Debug::log("[delay] API url: ${post_api_url}", Debug::$LOG_EXTENDED);
+
+					$json_data = UrlHelper::fetch(["url" => $post_api_url]);
+
+					if ($json_data) {
+						$json = json_decode($json_data, true);
+
+						if ($json) {
+							if (count($json["data"]["children"]) == 0) {
+								$skip_post = "[json:no-children]";
+							} else {
+								foreach ($json["data"]["children"] as $child) {
+									if (empty($child["data"]["is_robot_indexable"])) {
+										$skip_post = "[removed]";
+									} else if (empty($child["data"]["author"])) {
+										$skip_post = "[deleted]";
+									}
+								}
+							}
+						}
+					} else if (UrlHelper::$fetch_last_error_code == 404) {
+						$skip_post = "[json:404]";
+					}
+				}
+			}
+
+			if (!$skip_post) {
 				$tmpdoc = new DOMDocument();
 
 				if ($tmpdoc->loadXML($row["item"])) {
 					$tmpxpath = new DOMXPath($tmpdoc);
-
 					$imported_entry = $doc->importNode($tmpxpath->query("//entry")->item(0), true);
+					$target->appendChild($imported_entry);
 
 					$dsth->execute([$row["id"]]);
+
+					++$num_pulled;
 				}
 			} else {
-				Debug::log(sprintf("[delay] json fetch failed, post deleted? removing: %s [%s]",
-					$row["link"], $row["orig_ts"]), Debug::$LOG_VERBOSE);
-
-				$dsth->execute([$row["id"]]);
+				Debug::log(sprintf("[delay] skipping %s: %s [%s]",
+					$skip_post, $row["link"], $row["orig_ts"]), Debug::$LOG_EXTENDED);
 			}
-
 		}
+
+		return $num_pulled;
 	}
 
 	function hook_feed_fetched($feed_data, $fetch_url, $owner_uid, $feed_id) {
@@ -88,6 +135,8 @@ class Reddit_Delay extends Plugin {
 
 				$entries = $xpath->query("//atom:entry");
 
+				$num_delayed = 0;
+
 				foreach ($entries as $entry) {
 
 					$item = new FeedItem_Atom($entry, $doc, $xpath);
@@ -97,22 +146,27 @@ class Reddit_Delay extends Plugin {
 					Debug::log(sprintf("[delay] %s [%s vs %s]",
 									$item->get_link(),
 									date("Y-m-d H:i:s", $item->get_date()),
-									date("Y-m-d H:i:s", $cutoff_timestamp)), Debug::$LOG_VERBOSE);
+									date("Y-m-d H:i:s", $cutoff_timestamp)), Debug::$LOG_EXTENDED);
 
 					if ($item->get_date() > $cutoff_timestamp) {
 						if ($this->cache_exists($feed_id, $item->get_link())) {
-							Debug::log("[delay] article is too new, already cached.", Debug::$LOG_VERBOSE);
+							Debug::log("[delay] article is too new, already cached.", Debug::$LOG_EXTENDED);
 						} else {
-							Debug::log("[delay] article is too new, delaying it.", Debug::$LOG_VERBOSE);
+							Debug::log("[delay] article is too new, delaying it.", Debug::$LOG_EXTENDED);
 
 							$this->cache_push($feed_id, $item, $entry);
 						}
 
 						$entry->parentNode->removeChild($entry);
+						++$num_delayed;
 					}
 				}
 
-				$this->cache_pull_older($feed_id, $delay, $doc, $xpath);
+				$num_pulled = $this->cache_pull_older($feed_id, $delay, $doc, $xpath);
+
+				Debug::log("[delay] delayed ${num_delayed} reddit posts, pulled ${num_pulled} from backlog.", Debug::$LOG_VERBOSE);
+
+				$this->cache_cleanup();
 
 				return $doc->saveXML();
 			}
@@ -125,6 +179,7 @@ class Reddit_Delay extends Plugin {
 		if ($args != "prefFeeds") return;
 
 			$delay = (int) $this->host->get($this, "delay");
+			$skip_removed = $this->host->get($this, "skip_removed");
 		?>
 
 		<div dojoType="dijit.layout.AccordionPane"
@@ -151,6 +206,13 @@ class Reddit_Delay extends Plugin {
 					<input dojoType="dijit.form.NumberSpinner" name="delay" value="<?= $delay ?>">
 				</fieldset>
 
+				<fieldset class='narrow'>
+					<label class='checkbox'>
+						<?= \Controls\checkbox_tag("skip_removed", $skip_removed) ?>
+						<?= __("Skip removed and deleted posts") ?>
+					</label>
+				</fieldset>
+
 				<hr/>
 				<?= \Controls\submit_tag(__("Save")) ?>
 			</form>
@@ -161,8 +223,10 @@ class Reddit_Delay extends Plugin {
 
 	function save() {
 		$delay = (int) ($_POST["delay"] ?? 0);
+		$skip_removed = checkbox_to_sql_bool($_POST["skip_removed"] ?? "");
 
 		$this->host->set($this, "delay", $delay);
+		$this->host->set($this, "skip_removed", $skip_removed);
 
 		echo __("Configuration saved");
 	}
