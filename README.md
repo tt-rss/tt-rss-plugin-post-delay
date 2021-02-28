@@ -8,7 +8,7 @@ https://community.tt-rss.org/t/suggestions-for-how-to-delay-a-feed/4425
 
 - Git clone to `plugins.local/reddit_delay`
 - Install plugin schema (`schema.sql`) into tt-rss database (PostgreSQL only)
-- Set delay amount in Preferences &rarr; Feeds &rarr; Pluginsi
+- Set delay amount in Preferences &rarr; Feeds &rarr; Plugins
 
 ### Notes
 
