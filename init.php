@@ -221,7 +221,17 @@ class Reddit_Delay extends Plugin {
 
 			<hr/>
 
-			<h3><?= __("Currently delayed posts (by feed)") ?></h3>
+			<?php
+				$sth = $this->pdo->prepare("SELECT COUNT(c.id) AS count
+					FROM ttrss_plugin_reddit_delay_cache c, ttrss_feeds f
+					WHERE f.id = c.feed_id AND f.owner_uid = ?");
+				$sth->execute([$_SESSION["uid"]]);
+
+				$row = $sth->fetch();
+				$total_delayed = $row["count"];
+			?>
+
+			<h3><?= T_sprintf("Currently delayed posts (by feed, %d total)", $total_delayed) ?></h3>
 
 			<?php
 				$sth = $this->pdo->prepare("SELECT COUNT(c.id) AS count, f.title, f.id AS feed_id
