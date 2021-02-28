@@ -125,7 +125,7 @@ class Reddit_Delay extends Plugin {
 	function hook_feed_fetched($feed_data, $fetch_url, $owner_uid, $feed_id) {
 		$delay = (int) $this->host->get($this, "delay");
 
-		if (strpos($fetch_url, ".reddit.com") !== false) {
+		if (strpos($fetch_url, ".reddit.com") !== false && $delay > 0) {
 
 			$doc = new DOMDocument();
 
