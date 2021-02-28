@@ -218,6 +218,30 @@ class Reddit_Delay extends Plugin {
 				<hr/>
 				<?= \Controls\submit_tag(__("Save")) ?>
 			</form>
+
+			<hr/>
+
+			<h3><?= __("Currently delayed posts (by feed)") ?></h3>
+
+			<?php
+				$sth = $this->pdo->prepare("SELECT COUNT(c.id) AS count, f.title, f.id AS feed_id
+					FROM ttrss_plugin_reddit_delay_cache c, ttrss_feeds f
+					WHERE f.id = c.feed_id AND f.owner_uid = ?
+					GROUP BY f.title, f.id
+					ORDER BY count DESC, f.title");
+				$sth->execute([$_SESSION["uid"]]);
+			?>
+
+			<ul class="panel panel-scrollable">
+			<?php while ($row = $sth->fetch()) { ?>
+				<li>
+					<i class='material-icons'>rss_feed</i>
+					<a href='#'	onclick="CommonDialogs.editFeed(<?= $row["feed_id"] ?>)">
+						<?= $row["title"] ?>
+					</a>(<?= $row["count"] ?>)
+				</li>
+			<?php } ?>
+			</ul>
 		</div>
 
 		<?php
