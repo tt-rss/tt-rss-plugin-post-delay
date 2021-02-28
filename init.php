@@ -145,16 +145,16 @@ class Reddit_Delay extends Plugin {
 
 					$cutoff_timestamp = time() - ($delay * 60 * 60);
 
-					Debug::log(sprintf("[delay] %s [%s vs %s]",
-									$item->get_link(),
-									date("Y-m-d H:i:s", $item->get_date()),
-									date("Y-m-d H:i:s", $cutoff_timestamp)), Debug::$LOG_EXTENDED);
-
 					if ($item->get_date() > $cutoff_timestamp) {
+						Debug::log(sprintf("[delay] %s [%s vs %s]",
+							$item->get_link(),
+							date("Y-m-d H:i:s", $item->get_date()),
+							date("Y-m-d H:i:s", $cutoff_timestamp)), Debug::$LOG_EXTENDED);
+
 						if ($this->cache_exists($feed_id, $item->get_link())) {
-							Debug::log("[delay] article is too new, already cached.", Debug::$LOG_EXTENDED);
+							Debug::log("[delay] already stored.", Debug::$LOG_EXTENDED);
 						} else {
-							Debug::log("[delay] article is too new, delaying it.", Debug::$LOG_EXTENDED);
+							Debug::log("[delay] storing in the backlog.", Debug::$LOG_EXTENDED);
 
 							$this->cache_push($feed_id, $item, $entry);
 						}
