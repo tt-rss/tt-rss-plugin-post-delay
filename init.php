@@ -5,7 +5,7 @@ class Reddit_Delay extends Plugin {
 	private $host;
 
 	function about() {
-		return array(1.0,
+		return array(null,
 			"Delay posts in Reddit feeds",
 			"fox",
 			false,
