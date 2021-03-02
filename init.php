@@ -17,6 +17,8 @@ class Reddit_Delay extends Plugin {
 
 		$host->add_hook(PluginHost::HOOK_FEED_FETCHED, $this);
 		$host->add_hook(PluginHost::HOOK_PREFS_TAB, $this);
+		$host->add_hook(PluginHost::HOOK_PREFS_EDIT_FEED, $this);
+		$host->add_hook(PluginHost::HOOK_PREFS_SAVE_FEED, $this);
 	}
 
 	private function cache_exists(int $feed_id, string $link) {
@@ -58,7 +60,7 @@ class Reddit_Delay extends Plugin {
 			->where_raw("(orig_ts < NOW() - INTERVAL '$delay hours')")
 			->find_many();
 
-		$target = $xpath->query("//atom:feed")->item(0);
+		$target = $xpath->query("//atom:feed|//channel")->item(0);
 
 		$num_pulled = 0;
 		$num_deleted = 0;
@@ -71,7 +73,7 @@ class Reddit_Delay extends Plugin {
 			Debug::log(sprintf("[delay] pulling from cache: %s [%s]",
 								$entry->link, $entry->orig_ts), Debug::$LOG_EXTENDED);
 
-			if ($skip_removed) {
+			if ($skip_removed && strpos($entry->link, "reddit.com") !== false) {
 				$matches = [];
 
 				if (preg_match("/\/comments\/([^\/]+)\//", $entry->link, $matches)) {
@@ -106,9 +108,21 @@ class Reddit_Delay extends Plugin {
 						}
 					} else if (UrlHelper::$fetch_last_error_code == 404) {
 						$skip_post = "[json:404]";
+						$delete_post = true;
 					} else {
 						$skip_post = "[json:no-data]";
 					}
+				}
+			} else if ($skip_removed) {
+				// i guess we can check if the link leads anywhere
+
+				$data = UrlHelper::fetch(["url" => $entry->item]);
+
+				if (!$data) {
+					$skip_post = "[link:no-data]";
+				} else if (UrlHelper::$fetch_last_error_code == 404) {
+					$skip_post = "[link:404]";
+					$delete_post = true;
 				}
 			}
 
@@ -147,8 +161,9 @@ class Reddit_Delay extends Plugin {
 
 	function hook_feed_fetched($feed_data, $fetch_url, $owner_uid, $feed_id) {
 		$delay = (int) $this->host->get($this, "delay");
+		$enabled_feeds = $this->host->get_array($this, "enabled_feeds");
 
-		if (strpos($fetch_url, ".reddit.com") !== false && $delay > 0) {
+		if (in_array($feed_id, $enabled_feeds) || strpos($fetch_url, ".reddit.com") !== false && $delay > 0) {
 
 			$doc = new DOMDocument();
 
@@ -156,13 +171,16 @@ class Reddit_Delay extends Plugin {
 				$xpath = new DOMXPath($doc);
 				$xpath->registerNamespace('atom', 'http://www.w3.org/2005/Atom');
 
-				$entries = $xpath->query("//atom:entry");
+				$entries = $xpath->query("//atom:entry|//channel/item");
 
 				$num_delayed = 0;
 
 				foreach ($entries as $entry) {
 
-					$item = new FeedItem_Atom($entry, $doc, $xpath);
+					if ($entry->tagName == "item")
+						$item = new FeedItem_RSS($entry, $doc, $xpath);
+					else
+						$item = new FeedItem_Atom($entry, $doc, $xpath);
 
 					$cutoff_timestamp = time() - ($delay * 60 * 60);
 
@@ -273,6 +291,23 @@ class Reddit_Delay extends Plugin {
 				</li>
 			<?php } ?>
 			</ul>
+
+			<?php
+			$enabled_feeds = $this->filter_unknown_feeds($this->host->get_array($this, "enabled_feeds"));
+
+			$this->host->set($this, "enabled_feeds", $enabled_feeds);
+
+			if (count($enabled_feeds) > 0) { ?>
+				<hr/>
+				<h3><?= __("Additional feeds to delay") ?></h3>
+
+				<ul class='panel panel-scrollable list list-unstyled'>
+				<?php foreach ($enabled_feeds as $f) { ?>
+					<li><i class='material-icons'>rss_feed</i> <a href='#' onclick="CommonDialogs.editFeed(<?= $f ?>)">
+						<?= htmlspecialchars(Feeds::_get_title($f)) ?></a></li>
+				<?php } ?>
+				</ul>
+			<?php	} ?>
 		</div>
 
 		<?php
@@ -286,6 +321,52 @@ class Reddit_Delay extends Plugin {
 		$this->host->set($this, "skip_removed", $skip_removed);
 
 		echo __("Configuration saved");
+	}
+
+	function hook_prefs_edit_feed($feed_id) {
+		$enabled_feeds = $this->host->get_array($this, "enabled_feeds");
+		?>
+		<header><?= $this->__("Delay posts") ?></header>
+		<section>
+			<fieldset>
+				<label class='checkbox'>
+					<?= \Controls\checkbox_tag("reddit_delay_posts_enabled", in_array($feed_id, $enabled_feeds)) ?>
+					<?= $this->__('Enable for this feed') ?></label>
+			</fieldset>
+		</section>
+		<?php
+	}
+
+	function hook_prefs_save_feed($feed_id) {
+		$enabled_feeds = $this->host->get_array($this, "enabled_feeds");
+
+		$enable = checkbox_to_sql_bool($_POST["reddit_delay_posts_enabled"] ?? "");
+		$key = array_search($feed_id, $enabled_feeds);
+
+		if ($enable) {
+			if ($key === false) {
+				array_push($enabled_feeds, $feed_id);
+			}
+		} else {
+			if ($key !== false) {
+				unset($enabled_feeds[$key]);
+			}
+		}
+
+		$this->host->set($this, "enabled_feeds", $enabled_feeds);
+	}
+
+	private function filter_unknown_feeds($enabled_feeds) {
+		$tmp = [];
+
+		foreach ($enabled_feeds as $feed_id) {
+
+			if (ORM::for_table('ttrss_feeds')->find_one($feed_id)) {
+				array_push($tmp, $feed_id);
+			}
+		}
+
+		return $tmp;
 	}
 
 	function api_version() {
