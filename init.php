@@ -118,9 +118,7 @@ class Reddit_Delay extends Plugin {
 
 				$data = UrlHelper::fetch(["url" => $entry->item]);
 
-				if (!$data) {
-					$skip_post = "[link:no-data]";
-				} else if (UrlHelper::$fetch_last_error_code == 404) {
+				if (UrlHelper::$fetch_last_error_code == 404) {
 					$skip_post = "[link:404]";
 					$delete_post = true;
 				}
