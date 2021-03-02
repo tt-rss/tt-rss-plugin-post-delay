@@ -270,7 +270,7 @@ class Reddit_Delay extends Plugin {
 				$total_delayed = $row["count"];
 			?>
 
-			<h3><?= T_sprintf("Currently delayed posts (by feed, %d total)", $total_delayed) ?></h3>
+			<h3><?= T_sprintf("Currently delayed posts (by feed, %d total):", $total_delayed) ?></h3>
 
 			<?php
 				$sth = $this->pdo->prepare("SELECT COUNT(c.id) AS count, f.title, f.id AS feed_id
@@ -298,8 +298,7 @@ class Reddit_Delay extends Plugin {
 			$this->host->set($this, "enabled_feeds", $enabled_feeds);
 
 			if (count($enabled_feeds) > 0) { ?>
-				<hr/>
-				<h3><?= __("Additional feeds to delay") ?></h3>
+				<h3><?= __("Also enabled for these feeds:") ?></h3>
 
 				<ul class='panel panel-scrollable list list-unstyled'>
 				<?php foreach ($enabled_feeds as $f) { ?>
