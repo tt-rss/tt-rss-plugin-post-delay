@@ -56,7 +56,7 @@ class Reddit_Delay extends Plugin {
 		$entries = ORM::for_table('ttrss_plugin_reddit_delay_cache')
 			->where('feed_id', $feed_id)
 			->where_raw("(orig_ts < NOW() - INTERVAL '$delay hours')")
-			->find_one();
+			->find_many();
 
 		$target = $xpath->query("//atom:feed")->item(0);
 
