@@ -129,7 +129,7 @@ class Reddit_Delay extends Plugin {
 
 				if ($tmpdoc->loadXML($entry->item)) {
 					$tmpxpath = new DOMXPath($tmpdoc);
-					$imported_entry = $doc->importNode($tmpxpath->query("//entry")->item(0), true);
+					$imported_entry = $doc->importNode($tmpxpath->query("//entry|//item")->item(0), true);
 					$target->appendChild($imported_entry);
 
 					$entry->delete();
