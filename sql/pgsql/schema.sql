@@ -1,4 +1,4 @@
-drop table ttrss_plugin_reddit_delay_cache;
+drop table if exists ttrss_plugin_reddit_delay_cache;
 
 create table ttrss_plugin_reddit_delay_cache (id serial not null primary key,
    feed_id integer not null REFERENCES ttrss_feeds(id) on DELETE cascade,

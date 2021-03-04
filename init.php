@@ -15,6 +15,10 @@ class Reddit_Delay extends Plugin {
 	function init($host) {
 		$this->host = $host;
 
+		$migrations = new Db_Migrations();
+		$migrations->initialize_for_plugin($this);
+		$migrations->migrate();
+
 		$host->add_hook(PluginHost::HOOK_FEED_FETCHED, $this);
 		$host->add_hook(PluginHost::HOOK_PREFS_TAB, $this);
 		$host->add_hook(PluginHost::HOOK_PREFS_EDIT_FEED, $this);
