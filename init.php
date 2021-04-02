@@ -171,7 +171,17 @@ class Reddit_Delay extends Plugin {
 
 			if ($doc->loadXML($feed_data)) {
 				$xpath = new DOMXPath($doc);
+
+				// refs. FeedParser->init()
+				// some of those like dc: are needed for timestamps
 				$xpath->registerNamespace('atom', 'http://www.w3.org/2005/Atom');
+				$xpath->registerNamespace('atom03', 'http://purl.org/atom/ns#');
+				$xpath->registerNamespace('media', 'http://search.yahoo.com/mrss/');
+				$xpath->registerNamespace('rdf', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#');
+				$xpath->registerNamespace('slash', 'http://purl.org/rss/1.0/modules/slash/');
+				$xpath->registerNamespace('dc', 'http://purl.org/dc/elements/1.1/');
+				$xpath->registerNamespace('content', 'http://purl.org/rss/1.0/modules/content/');
+				$xpath->registerNamespace('thread', 'http://purl.org/syndication/thread/1.0');
 
 				$entries = $xpath->query("//atom:entry|//channel/item");
 
