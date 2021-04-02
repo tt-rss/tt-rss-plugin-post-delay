@@ -196,7 +196,12 @@ class Reddit_Delay extends Plugin {
 
 					$cutoff_timestamp = time() - ($delay * 60 * 60);
 
-					if ($item->get_date() > $cutoff_timestamp) {
+					// get_date() may not return anything for broken feeds
+					$item_timestamp = (int)$item->get_date();
+
+					if (!$item_timestamp) $item_timestamp = time();
+
+					if ($item_timestamp > $cutoff_timestamp) {
 						Debug::log(sprintf("[delay] %s [%s vs %s]",
 							$item->get_link(),
 							date("Y-m-d H:i:s", $item->get_date()),
