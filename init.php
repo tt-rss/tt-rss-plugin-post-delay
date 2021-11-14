@@ -25,6 +25,11 @@ class Reddit_Delay extends Plugin {
 		}
 	}
 
+	/**
+	 * @param int $feed_id
+	 * @param string $link
+	 * @return ORM|false
+	 */
 	private function cache_exists(int $feed_id, string $link) {
 		$entry = ORM::for_table('ttrss_plugin_reddit_delay_cache')
 			->where('feed_id', $feed_id)
@@ -34,7 +39,7 @@ class Reddit_Delay extends Plugin {
 		return $entry;
 	}
 
-	private function cache_push(int $feed_id, FeedItem $item, DOMNode $node) {
+	private function cache_push(int $feed_id, FeedItem $item, DOMNode $node) : bool {
 		$entry = ORM::for_table('ttrss_plugin_reddit_delay_cache')->create();
 
 		$entry->set([
@@ -44,11 +49,11 @@ class Reddit_Delay extends Plugin {
 			'orig_ts' => date("Y-m-d H:i:s", $item->get_date())
 		]);
 
-		$entry->save();
+		return $entry->save();
 	}
 
-	// force-remove all leftover data from cache
-	private function cache_cleanup() {
+	/** force-remove all leftover data from cache */
+	private function cache_cleanup() : void {
 		$max_days = (int) Config::get(Config::CACHE_MAX_DAYS);
 
 		$sth = $this->pdo->prepare("DELETE FROM ttrss_plugin_reddit_delay_cache
@@ -56,7 +61,15 @@ class Reddit_Delay extends Plugin {
 		$sth->execute([]);
 	}
 
-	private function cache_pull_older(int $feed_id, int $delay, DOMDocument $doc, DOMXPath $xpath) {
+	/**
+	 * @param int $feed_id
+	 * @param int $delay
+	 * @param DOMDocument $doc
+	 * @param DOMXPath $xpath
+	 * @return array<int>
+	 * @throws PDOException
+	 */
+	private function cache_pull_older(int $feed_id, int $delay, DOMDocument $doc, DOMXPath $xpath) : array {
 		$skip_removed = $this->host->get($this, "skip_removed");
 
 		$entries = ORM::for_table('ttrss_plugin_reddit_delay_cache')
@@ -75,7 +88,7 @@ class Reddit_Delay extends Plugin {
 			$delete_post = false;
 
 			Debug::log(sprintf("[delay] pulling from cache: %s [%s]",
-								$entry->link, $entry->orig_ts), Debug::$LOG_EXTENDED);
+								$entry->link, $entry->orig_ts), Debug::LOG_EXTENDED);
 
 			if ($skip_removed && strpos($entry->link, "reddit.com") !== false) {
 				$matches = [];
@@ -84,7 +97,7 @@ class Reddit_Delay extends Plugin {
 					$post_id = $matches[1];
 					$post_api_url = "https://api.reddit.com/api/info/?id=t3_${post_id}";
 
-					Debug::log("[delay] API url: ${post_api_url}", Debug::$LOG_EXTENDED);
+					Debug::log("[delay] API url: ${post_api_url}", Debug::LOG_EXTENDED);
 
 					$json_data = UrlHelper::fetch(["url" => $post_api_url]);
 
@@ -143,7 +156,7 @@ class Reddit_Delay extends Plugin {
 			} else {
 				if ($delete_post) {
 					Debug::log(sprintf("[delay] deleting %s: %s [%s]",
-						$skip_post, $entry->link, $entry->orig_ts), Debug::$LOG_EXTENDED);
+						$skip_post, $entry->link, $entry->orig_ts), Debug::LOG_EXTENDED);
 
 					$entry->delete();
 
@@ -151,7 +164,7 @@ class Reddit_Delay extends Plugin {
 
 				} else {
 					Debug::log(sprintf("[delay] skipping %s: %s [%s]",
-						$skip_post,  $entry->link, $entry->orig_ts), Debug::$LOG_EXTENDED);
+						$skip_post,  $entry->link, $entry->orig_ts), Debug::LOG_EXTENDED);
 
 					++$num_skipped;
 				}
@@ -205,12 +218,12 @@ class Reddit_Delay extends Plugin {
 						Debug::log(sprintf("[delay] %s [%s vs %s]",
 							$item->get_link(),
 							date("Y-m-d H:i:s", $item->get_date()),
-							date("Y-m-d H:i:s", $cutoff_timestamp)), Debug::$LOG_EXTENDED);
+							date("Y-m-d H:i:s", $cutoff_timestamp)), Debug::LOG_EXTENDED);
 
 						if ($this->cache_exists($feed_id, $item->get_link())) {
-							Debug::log("[delay] already stored.", Debug::$LOG_EXTENDED);
+							Debug::log("[delay] already stored.", Debug::LOG_EXTENDED);
 						} else {
-							Debug::log("[delay] storing in the backlog.", Debug::$LOG_EXTENDED);
+							Debug::log("[delay] storing in the backlog.", Debug::LOG_EXTENDED);
 
 							$this->cache_push($feed_id, $item, $entry);
 						}
@@ -222,7 +235,8 @@ class Reddit_Delay extends Plugin {
 
 				list ($num_pulled, $num_deleted, $num_skipped) = $this->cache_pull_older($feed_id, $delay, $doc, $xpath);
 
-				Debug::log("[delay] ${num_delayed} delayed, ${num_pulled} pulled, ${num_deleted} deleted, ${num_skipped} skipped.", Debug::$LOG_VERBOSE);
+				Debug::log("[delay] ${num_delayed} delayed, ${num_pulled} pulled, ${num_deleted} deleted, ${num_skipped} skipped.",
+					Debug::LOG_VERBOSE);
 
 				$this->cache_cleanup();
 
@@ -329,7 +343,7 @@ class Reddit_Delay extends Plugin {
 		<?php
 	}
 
-	function save() {
+	function save() : void {
 		$delay = (int) ($_POST["delay"] ?? 0);
 		$skip_removed = checkbox_to_sql_bool($_POST["skip_removed"] ?? "");
 
@@ -372,7 +386,12 @@ class Reddit_Delay extends Plugin {
 		$this->host->set($this, "enabled_feeds", $enabled_feeds);
 	}
 
-	private function filter_unknown_feeds($enabled_feeds) {
+	/**
+	 * @param array<int> $enabled_feeds
+	 * @return array<int>
+	 * @throws PDOException
+	 */
+	private function filter_unknown_feeds(array $enabled_feeds) : array {
 		$tmp = [];
 
 		foreach ($enabled_feeds as $feed_id) {
