@@ -178,7 +178,7 @@ class Reddit_Delay extends Plugin {
 		$delay = (int) $this->host->get($this, "delay");
 		$enabled_feeds = $this->host->get_array($this, "enabled_feeds");
 
-		if (in_array($feed_id, $enabled_feeds) || preg_match("/\.?reddit\.com/", $fetch_url) !== false && $delay > 0) {
+		if (in_array($feed_id, $enabled_feeds) || preg_match("/\.?reddit\.com/", $fetch_url) === 1 && $delay > 0) {
 
 			$doc = new DOMDocument();
 
