@@ -56,8 +56,14 @@ class Reddit_Delay extends Plugin {
 	private function cache_cleanup() : void {
 		$max_days = (int) Config::get(Config::CACHE_MAX_DAYS);
 
+		if (Config::get(Config::DB_TYPE) == "pgsql") {
+			$interval_query = "orig_ts < NOW() - INTERVAL '$max_days days'";
+		} else /*if (Config::get(Config::DB_TYPE) == "mysql") */ {
+			$interval_query = "orig_ts < DATE_SUB(NOW(), INTERVAL $max_days DAY)";
+		}
+
 		$sth = $this->pdo->prepare("DELETE FROM ttrss_plugin_reddit_delay_cache
-			WHERE orig_ts < NOW() - INTERVAL '$max_days days'");
+			WHERE $interval_query");
 		$sth->execute([]);
 	}
 
@@ -72,9 +78,15 @@ class Reddit_Delay extends Plugin {
 	private function cache_pull_older(int $feed_id, int $delay, DOMDocument $doc, DOMXPath $xpath) : array {
 		$skip_removed = $this->host->get($this, "skip_removed");
 
+		if (Config::get(Config::DB_TYPE) == "pgsql") {
+			$interval_query = "(orig_ts < NOW() - INTERVAL '$delay hours')";
+		} else /*if (Config::get(Config::DB_TYPE) == "mysql") */ {
+			$interval_query = "(orig_ts < DATE_SUB(NOW(), INTERVAL $delay HOUR))";
+		}
+
 		$entries = ORM::for_table('ttrss_plugin_reddit_delay_cache')
 			->where('feed_id', $feed_id)
-			->where_raw("(orig_ts < NOW() - INTERVAL '$delay hours')")
+			->where_raw($interval_query)
 			->find_many();
 
 		$target = $xpath->query("//atom:feed|//channel")->item(0);
