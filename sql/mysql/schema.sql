@@ -6,7 +6,7 @@ create table ttrss_plugin_reddit_delay_cache (id integer not null primary key au
    item text not NULL,
    orig_ts datetime not null) ENGINE=InnoDB DEFAULT CHARSET=UTF8;
 
-create index ttrss_plugin_reddit_delay_cache_link_idx on ttrss_plugin_reddit_delay_cache(link);
+create index ttrss_plugin_reddit_delay_cache_link_idx on ttrss_plugin_reddit_delay_cache(link(768));
 create index ttrss_plugin_reddit_delay_cache_feed_id_idx on ttrss_plugin_reddit_delay_cache(feed_id);
 
-create unique index ttrss_plugin_reddit_delay_cache_idx on ttrss_plugin_reddit_delay_cache(feed_id, link);
+create unique index ttrss_plugin_reddit_delay_cache_idx on ttrss_plugin_reddit_delay_cache(feed_id, link(768));
