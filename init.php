@@ -1,12 +1,12 @@
 <?php
-class Reddit_Delay extends Plugin {
+class Post_Delay extends Plugin {
 
 	/** @var PluginHost $host */
 	private $host;
 
 	function about() {
 		return array(null,
-			"Delay posts in Reddit feeds",
+			"Delays posts in RSS feeds",
 			"fox",
 			false,
 			"https://community.tt-rss.org/t/suggestions-for-how-to-delay-a-feed/4425");
@@ -31,7 +31,7 @@ class Reddit_Delay extends Plugin {
 	 * @return ORM|false
 	 */
 	private function cache_exists(int $feed_id, string $link) {
-		$entry = ORM::for_table('ttrss_plugin_reddit_delay_cache')
+		$entry = ORM::for_table('ttrss_plugin_post_delay_cache')
 			->where('feed_id', $feed_id)
 			->where('link', $link)
 			->find_one();
@@ -40,11 +40,12 @@ class Reddit_Delay extends Plugin {
 	}
 
 	private function cache_push(int $feed_id, FeedItem $item, DOMNode $node) : bool {
-		$entry = ORM::for_table('ttrss_plugin_reddit_delay_cache')->create();
+		$entry = ORM::for_table('ttrss_plugin_post_delay_cache')->create();
 
 		$entry->set([
 			'feed_id' => $feed_id,
 			'link' => $item->get_link(),
+			'comments' => $item->get_comments_url(),
 			'item' => $node->ownerDocument->saveXML($node),
 			'orig_ts' => date("Y-m-d H:i:s", $item->get_date())
 		]);
@@ -62,7 +63,7 @@ class Reddit_Delay extends Plugin {
 			$interval_query = "orig_ts < DATE_SUB(NOW(), INTERVAL $max_days DAY)";
 		}
 
-		$sth = $this->pdo->prepare("DELETE FROM ttrss_plugin_reddit_delay_cache
+		$sth = $this->pdo->prepare("DELETE FROM ttrss_plugin_post_delay_cache
 			WHERE $interval_query");
 		$sth->execute([]);
 	}
@@ -84,7 +85,7 @@ class Reddit_Delay extends Plugin {
 			$interval_query = "(orig_ts < DATE_SUB(NOW(), INTERVAL $delay HOUR))";
 		}
 
-		$entries = ORM::for_table('ttrss_plugin_reddit_delay_cache')
+		$entries = ORM::for_table('ttrss_plugin_post_delay_cache')
 			->where('feed_id', $feed_id)
 			->where_raw($interval_query)
 			->find_many();
@@ -99,57 +100,24 @@ class Reddit_Delay extends Plugin {
 			$skip_post = false;
 			$delete_post = false;
 
-			Debug::log(sprintf("[delay] pulling from cache: %s [%s]",
-								$entry->link, $entry->orig_ts), Debug::LOG_EXTENDED);
+			Debug::log(sprintf("[delay] pulling from cache: %s [c:%s] [%s]",
+								$entry->link, $entry->comments, $entry->orig_ts), Debug::LOG_EXTENDED);
 
-			if ($skip_removed && strpos($entry->link, "reddit.com") !== false) {
-				$matches = [];
+			if ($skip_removed) {
+				UrlHelper::fetch(["url" => $entry->item]);
 
-				if (preg_match("/\/comments\/([^\/]+)\//", $entry->link, $matches)) {
-					$post_id = $matches[1];
-					$post_api_url = "https://api.reddit.com/api/info/?id=t3_${post_id}";
-
-					Debug::log("[delay] API url: ${post_api_url}", Debug::LOG_EXTENDED);
-
-					$json_data = UrlHelper::fetch(["url" => $post_api_url]);
-
-					if ($json_data) {
-						$json = json_decode($json_data, true);
-
-						if ($json) {
-							if (count($json["data"]["children"]) == 0) {
-								$skip_post = "[json:no-children]";
-							} else {
-								foreach ($json["data"]["children"] as $child) {
-									if (empty($child["data"]["is_robot_indexable"])) {
-										$skip_post = "[removed]";
-										$delete_post = true;
-										break;
-									} else if (empty($child["data"]["author"])) {
-										$skip_post = "[deleted]";
-										$delete_post = true;
-										break;
-									}
-								}
-							}
-						} else {
-							$skip_post = "[json:parse-failed]";
-						}
-					} else if (UrlHelper::$fetch_last_error_code == 404) {
-						$skip_post = "[json:404]";
-						$delete_post = true;
-					} else {
-						$skip_post = "[json:no-data]";
-					}
-				}
-			} else if ($skip_removed) {
-				// i guess we can check if the link leads anywhere
-
-				$data = UrlHelper::fetch(["url" => $entry->item]);
-
-				if (UrlHelper::$fetch_last_error_code == 404) {
-					$skip_post = "[link:404]";
+				if (UrlHelper::$fetch_last_error_code >= 400) {
+					$skip_post = "[link:4xx-or-5xx]";
 					$delete_post = true;
+				}
+
+				if (strlen($entry->comments) > 0) {
+					UrlHelper::fetch(["url" => $entry->comments]);
+
+					if (UrlHelper::$fetch_last_error_code >= 400) {
+						$skip_post = "[comments:4xx-or-5xx]";
+						$delete_post = true;
+					}
 				}
 			}
 
@@ -190,7 +158,7 @@ class Reddit_Delay extends Plugin {
 		$delay = (int) $this->host->get($this, "delay");
 		$enabled_feeds = $this->host->get_array($this, "enabled_feeds");
 
-		if (in_array($feed_id, $enabled_feeds) || preg_match("/\.?reddit\.com/", $fetch_url) === 1 && $delay > 0) {
+		if (in_array($feed_id, $enabled_feeds) && $delay > 0) {
 
 			$doc = new DOMDocument();
 
@@ -227,8 +195,9 @@ class Reddit_Delay extends Plugin {
 					if (!$item_timestamp) $item_timestamp = time();
 
 					if ($item_timestamp > $cutoff_timestamp) {
-						Debug::log(sprintf("[delay] %s [%s vs %s]",
+						Debug::log(sprintf("[delay] %s [c: %s] [%s vs %s]",
 							$item->get_link(),
+							$item->get_comments_url(),
 							date("Y-m-d H:i:s", $item->get_date()),
 							date("Y-m-d H:i:s", $cutoff_timestamp)), Debug::LOG_EXTENDED);
 
@@ -267,7 +236,7 @@ class Reddit_Delay extends Plugin {
 		?>
 
 		<div dojoType="dijit.layout.AccordionPane"
-			title="<i class='material-icons'>extension</i> <?= __('Delay Reddit posts (reddit_delay)') ?>">
+			title="<i class='material-icons'>extension</i> <?= __('Delay posts settings (post_delay)') ?>">
 
 			<form dojoType='dijit.form.Form'>
 
@@ -305,7 +274,7 @@ class Reddit_Delay extends Plugin {
 
 			<?php
 				$sth = $this->pdo->prepare("SELECT COUNT(c.id) AS count
-					FROM ttrss_plugin_reddit_delay_cache c, ttrss_feeds f
+					FROM ttrss_plugin_post_delay_cache c, ttrss_feeds f
 					WHERE f.id = c.feed_id AND f.owner_uid = ?");
 				$sth->execute([$_SESSION["uid"]]);
 
@@ -317,7 +286,7 @@ class Reddit_Delay extends Plugin {
 
 			<?php
 				$sth = $this->pdo->prepare("SELECT COUNT(c.id) AS count, f.title, f.id AS feed_id
-					FROM ttrss_plugin_reddit_delay_cache c, ttrss_feeds f
+					FROM ttrss_plugin_post_delay_cache c, ttrss_feeds f
 					WHERE f.id = c.feed_id AND f.owner_uid = ?
 					GROUP BY f.title, f.id
 					ORDER BY count DESC, f.title");
@@ -341,7 +310,7 @@ class Reddit_Delay extends Plugin {
 			$this->host->set($this, "enabled_feeds", $enabled_feeds);
 
 			if (count($enabled_feeds) > 0) { ?>
-				<h3><?= __("Also enabled for these feeds:") ?></h3>
+				<h3><?= __("Enabled for these feeds:") ?></h3>
 
 				<ul class='panel panel-scrollable list list-unstyled'>
 				<?php foreach ($enabled_feeds as $f) { ?>
@@ -372,7 +341,7 @@ class Reddit_Delay extends Plugin {
 		<section>
 			<fieldset>
 				<label class='checkbox'>
-					<?= \Controls\checkbox_tag("reddit_delay_posts_enabled", in_array($feed_id, $enabled_feeds)) ?>
+					<?= \Controls\checkbox_tag("delay_posts_enabled", in_array($feed_id, $enabled_feeds)) ?>
 					<?= $this->__('Enable for this feed') ?></label>
 			</fieldset>
 		</section>
@@ -382,7 +351,7 @@ class Reddit_Delay extends Plugin {
 	function hook_prefs_save_feed($feed_id) {
 		$enabled_feeds = $this->host->get_array($this, "enabled_feeds");
 
-		$enable = checkbox_to_sql_bool($_POST["reddit_delay_posts_enabled"] ?? "");
+		$enable = checkbox_to_sql_bool($_POST["delay_posts_enabled"] ?? "");
 		$key = array_search($feed_id, $enabled_feeds);
 
 		if ($enable) {
