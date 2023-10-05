@@ -216,7 +216,7 @@ class Post_Delay extends Plugin {
 
 				list ($num_pulled, $num_deleted, $num_skipped) = $this->cache_pull_older($feed_id, $delay, $doc, $xpath);
 
-				Debug::log("[delay] ${num_delayed} delayed, ${num_pulled} pulled, ${num_deleted} deleted, ${num_skipped} skipped.",
+				Debug::log("[delay] {$num_delayed} delayed, {$num_pulled} pulled, {$num_deleted} deleted, {$num_skipped} skipped.",
 					Debug::LOG_VERBOSE);
 
 				$this->cache_cleanup();
