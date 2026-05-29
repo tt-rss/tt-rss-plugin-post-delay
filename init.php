@@ -181,6 +181,7 @@ class Post_Delay extends Plugin {
 				$num_delayed = 0;
 
 				foreach ($entries as $entry) {
+					/** @var DOMElement $entry */
 
 					if ($entry->tagName == "item")
 						$item = new FeedItem_RSS($entry, $doc, $xpath);
@@ -307,15 +308,15 @@ class Post_Delay extends Plugin {
 			<?php
 			$enabled_feeds = $this->filter_unknown_feeds($this->host->get_array($this, "enabled_feeds"));
 
-			$this->host->set($this, "enabled_feeds", $enabled_feeds);
+			$this->host->set($this, 'enabled_feeds', array_column($enabled_feeds, 'id'));
 
 			if (count($enabled_feeds) > 0) { ?>
 				<h3><?= __("Enabled for these feeds:") ?></h3>
 
 				<ul class='panel panel-scrollable list list-unstyled'>
 				<?php foreach ($enabled_feeds as $f) { ?>
-					<li><i class='material-icons'>rss_feed</i> <a href='#' onclick="CommonDialogs.editFeed(<?= $f ?>)">
-						<?= htmlspecialchars(Feeds::_get_title($f)) ?></a></li>
+					<li><i class='material-icons'>rss_feed</i> <a href='#' onclick="CommonDialogs.editFeed(<?= $f['id'] ?>)">
+						<?= htmlspecialchars(Feeds::_get_title($f['id'], $f['owner_uid'])) ?></a></li>
 				<?php } ?>
 				</ul>
 			<?php	} ?>
@@ -369,20 +370,14 @@ class Post_Delay extends Plugin {
 
 	/**
 	 * @param array<int> $enabled_feeds
-	 * @return array<int>
+	 * @return array<int, array{id: int, owner_uid: int}>
 	 * @throws PDOException
 	 */
 	private function filter_unknown_feeds(array $enabled_feeds) : array {
-		$tmp = [];
-
-		foreach ($enabled_feeds as $feed_id) {
-
-			if (ORM::for_table('ttrss_feeds')->find_one($feed_id)) {
-				array_push($tmp, $feed_id);
-			}
-		}
-
-		return $tmp;
+		return ORM::for_table('ttrss_feeds')
+			->select_many('id', 'owner_uid')
+			->where_in('id', $enabled_feeds)
+			->find_array();
 	}
 
 	function api_version() {
